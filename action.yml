@@ -13,13 +13,13 @@ inputs:
 runs:
   using: "composite"
   steps:
-    # Step to validate the cache-name input
     - name: Validate cache-name
       run: |
         if [[ "${{ inputs.cache-name }}" != "packages" && "${{ inputs.cache-name }}" != "pip" && "${{ inputs.cache-name }}" != "ansible-galaxy" ]]; then
           echo "Invalid cache-name. Allowed names are: packages, pip, ansible-galaxy."
           exit 1
         fi
+      shell: bash
 
     # Step to set the CACHE_ID environment variable
     - name: Set default CACHE_ID if not provided
@@ -30,6 +30,7 @@ runs:
         else
           echo "CACHE_ID=${{ inputs.cache-id }}" >> $GITHUB_ENV
         fi
+      shell: bash
 
     # Step to determine the cache path
     - name: Determine cache path based on OS and input
@@ -46,6 +47,7 @@ runs:
         else
           exit 1
         fi
+      shell: bash
 
     # Step to restore cache
     - name: Restore cache using CACHE_ID
@@ -64,12 +66,14 @@ runs:
       run: |
         sudo apt update
         sudo apt-get autoclean --yes
+      shell: bash
 
     # Step to update pip if cache is for pip and cache miss occurred
     - name: Pip update (if pip cache)
       if: inputs.cache-name == 'pip' && steps.cache-setup.outputs.cache-hit != 'true'
       run: |
         python -m pip install --upgrade pip
+      shell: bash
 
     # Step to install Ansible Galaxy collections if cache is for ansible-galaxy and cache miss occurred
     - name: Install ansible galaxy collections (if ansible-galaxy cache)
@@ -80,3 +84,4 @@ runs:
         else
           echo File galaxy-requirements.yml does not exist
         fi
+      shell: bash
