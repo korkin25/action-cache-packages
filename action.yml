@@ -1,19 +1,82 @@
-name: 'New action template'
-description: 'Need to update'
-author: Evgenii Kuzakov
-  # inputs:
-  #  yamllint_version:
-  #    description: 'yamllint version'
-  #    required: false
-  #    default: "1.32.0"
+name: 'Cache Procedures'
+description: 'Handle caching based on day and cache name'
 
-  #runs:
-  #  using: 'composite'
-  #  steps:
-  #    - name: Cache some data
-  #      id: cache_some_id
-  #      uses: actions/cache@v2
-  #      with:
-  #        path: ~/.cache/pip
-  #        key: pip-data-${{ runner.os }}-yamllint-${{ inputs.yamllint_version }}
-  #        restore-keys: pip-data-${{ runner.os }}-yamllint-${{ inputs.yamllint_version }}
+inputs:
+  cache-name:
+    description: 'Name for cache (like packages, pip, ansible-galaxy, etc.)'
+    required: true
+  cache-id:
+    description: 'ID for cache (default to current date)'
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    # Step to validate the cache-name input
+    - name: Validate cache-name
+      run: |
+        if [[ "${{ inputs.cache-name }}" != "packages" && "${{ inputs.cache-name }}" != "pip" && "${{ inputs.cache-name }}" != "ansible-galaxy" ]]; then
+          echo "Invalid cache-name. Allowed names are: packages, pip, ansible-galaxy."
+          exit 1
+        fi
+
+    # Step to set the CACHE_ID environment variable
+    - name: Set default CACHE_ID if not provided
+      run: |
+        if [ -z "${{ inputs.cache-id }}" ]; then
+          echo No cache-id given, using current date
+          echo "CACHE_ID=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+        else
+          echo "CACHE_ID=${{ inputs.cache-id }}" >> $GITHUB_ENV
+        fi
+
+    # Step to determine the cache path
+    - name: Determine cache path based on OS and input
+      id: cache-details
+      run: |
+        if [[ "${{ runner.os }}" == "Linux" ]]; then
+          if [[ "${{ inputs.cache-name }}" == "packages" ]]; then
+            echo "path=/var/cache/apt" >> $GITHUB_ENV
+          elif [[ "${{ inputs.cache-name }}" == "pip" ]]; then
+            echo "path=${HOME}/.cache/pip" >> $GITHUB_ENV
+          elif [[ "${{ inputs.cache-name }}" == "ansible-galaxy" ]]; then
+            echo "path=${HOME}/.ansible/collections" >> $GITHUB_ENV
+          fi
+        else
+          exit 1
+        fi
+
+    # Step to restore cache
+    - name: Restore cache using CACHE_ID
+      id: cache-setup
+      uses: actions/cache@v2
+      with:
+        path: ${{ env.path }}
+        key: ${{ runner.os }}-${{ inputs.cache-name }}-${{ env.CACHE_ID }}
+        restore-keys: |
+          ${{ runner.os }}-${{ inputs.cache-name }}-${{ env.CACHE_ID }}
+          ${{ runner.os }}-${{ inputs.cache-name }}-
+
+    # Step to update packages if cache is for packages and cache miss occurred
+    - name: Update packages (if packages cache)
+      if: inputs.cache-name == 'packages' && steps.cache-setup.outputs.cache-hit != 'true'
+      run: |
+        sudo apt update
+        sudo apt-get autoclean --yes
+
+    # Step to update pip if cache is for pip and cache miss occurred
+    - name: Pip update (if pip cache)
+      if: inputs.cache-name == 'pip' && steps.cache-setup.outputs.cache-hit != 'true'
+      run: |
+        python -m pip install --upgrade pip
+
+    # Step to install Ansible Galaxy collections if cache is for ansible-galaxy and cache miss occurred
+    - name: Install ansible galaxy collections (if ansible-galaxy cache)
+      if: inputs.cache-name == 'ansible-galaxy' && steps.cache-setup.outputs.cache-hit != 'true'
+      run: |
+        if [ -r galaxy-requirements.yml ]; then
+          ansible-galaxy collection install -r galaxy-requirements.yml
+        else
+          echo File galaxy-requirements.yml does not exist
+        fi
