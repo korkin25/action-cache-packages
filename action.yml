@@ -64,8 +64,9 @@ runs:
     - name: Update packages (if packages cache)
       if: inputs.cache-name == 'packages' && steps.cache-setup.outputs.cache-hit != 'true'
       run: |
-        sudo apt update
+        sudo apt-get -y update
         sudo apt-get autoclean --yes
+        sudo apt-get -y upgrade
       shell: bash
 
     # Step to update pip if cache is for pip and cache miss occurred
